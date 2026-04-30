@@ -186,6 +186,13 @@ always @(posedge clk) begin
             4'h9: branch_taken = (br_rs1_val != br_rs2_val);
             4'hA: branch_taken = (br_rs1_val >= br_rs2_val);
             4'hB: branch_taken = (br_rs1_val > br_rs2_val);
+            
+            4'hD: branch_taken = (br_rs1_val != 0); // BNEZ
+            4'h5: branch_taken = (br_rs1_val == 0); // BEQZ
+            4'h6: branch_taken = (br_rs1_val < 0); // BLTZ
+            4'h7: branch_taken = (br_rs1_val <= 0); // BLTEZ
+            4'hE: branch_taken = (br_rs1_val >= 0); // BGTEZ
+            4'hF: branch_taken = (br_rs1_val > 0); // BGTZ
             default: branch_taken = 0;
         endcase
     end else if (opcode == 4'h4) begin
