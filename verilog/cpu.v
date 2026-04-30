@@ -195,6 +195,14 @@ always @(posedge clk) begin
             4'hF: branch_taken = (br_rs1_val > 0); // BGTZ
             default: branch_taken = 0;
         endcase
+    end else if(opcode == 4'hB) begin
+        case (fn)
+        4'h0: begin
+             branch_taken = 1; 
+             regs[rd] <= pc + 4;
+        end;
+        default: branch_taken = 0;
+        endcase
     end else if (opcode == 4'h4) begin
         regs[rd] <= dmem[dmem_index];
     end else if (opcode == 4'h5) begin
@@ -206,9 +214,12 @@ always @(posedge clk) begin
         
         if (opcode == 4'h6 && branch_taken) begin
             pc <= pc + 4 + (imm_sext << 2);
+        end else if(opcode == 4'hB && branch_taken) begin
+            pc <= addr;
         end else begin
             pc <= pc + 4;
         end
+
     end
 end
 
