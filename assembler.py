@@ -289,20 +289,18 @@ def stripAndReplaceLabels(line_to_pc: OrderedDict) -> OrderedDict:
             result[pc] = replaceLabel(line)
     return result
 
-def replaceLabel(line: str) -> str:
+def replaceLabel(line: str) -> str: ## should work, temp
     instr_type = classify(line)
     mnemonic, operands = parse(line)
     ops = [o.strip() for o in operands.split(",")]
 
     if instr_type == InstrType.BRANCH:
-        # BEQ RS1,RS2,label  or  BEQZ RS1,label
         label = ops[-1]
         if label in label_table:
             ops[-1] = str(label_table[label])
         return f"{mnemonic} {','.join(ops)}"
 
     if instr_type == InstrType.JAL:
-        # JAL RD,imm(RS1)
         imm_rs = ops[-1]
         m = re.match(r'^([A-Za-z_]\w*)\((\w+)\)$', imm_rs)
         if m and m.group(1) in label_table:
@@ -310,14 +308,12 @@ def replaceLabel(line: str) -> str:
         return f"{mnemonic} {','.join(ops)}"
 
     if instr_type in (InstrType.ALU_I, InstrType.CMP_I):
-        # RD,RS1,imm  - imm could be a label (16 LSBs)
         label = ops[-1]
         if label in label_table:
             ops[-1] = str(label_table[label] & 0xFFFF)
         return f"{mnemonic} {','.join(ops)}"
 
     if instr_type in (InstrType.LOAD, InstrType.STORE):
-        # RD,imm(RS1) or RS2,imm(RS1) - replace imm if label
         imm_rs = ops[-1]
         m = re.match(r'^([A-Za-z_]\w*)\((\w+)\)$', imm_rs)
         if m and m.group(1) in label_table:

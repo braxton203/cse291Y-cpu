@@ -17,7 +17,7 @@ fail:
 done:
     .WORD 0xFFFF
 
-
+.NAME bigval=0x1000
 NOT  r3, r4
 BLE  r1, r2, loop
 BGE  r1, r2, loop

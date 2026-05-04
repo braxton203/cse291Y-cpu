@@ -1,0 +1,20 @@
+ADDI r1,r0,5
+ADDI r2,r0,10
+add  r3, r1, r2
+SW r3,0(r0)
+LW r4,0(r0)
+eq   r5, r3, r4
+BEQ r5,r0,4107
+SUBI r1,r1,1
+BNE r1,r0,4095
+JAL r6,done
+ADDI r7,r0,999
+.WORD 0xFFFF
+NAND r3,r4,r4
+LTE R6,r1,r2
+GTE R6,r1,r2
+BNE r1,r0,4095
+BEQ r5,r0,4107
+SUBI r1,r1,1
+JAL RA,4111(r0)
+JAL R9,0(RA)
