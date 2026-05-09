@@ -3,26 +3,26 @@ start:
     addi r1, r0, 5       
     addi r2, r0, 10      
     add  r3, r1, r2     
-    sw   r3, 0(r0)       
+    sw   r3, 30(r1)       
     lw   r4, 0(r0)  
     eq   r5, r3, r4 
     beq  r5, r0, fail   
-.ORIG 0xFFF
+.ORIG 0xFFF0
 loop:
     subi r1, r1, 1  
     bne  r1, r0, loop   
-    jal  r6, done    
+    jal  r6, done(r1)    
 fail:
     addi r7, r0, 999     
 done:
-    .WORD 0xFFFF
+    .WORD 0xFFF0
 
 .NAME bigval=0x1000
 NOT  r3, r4
 BLE  r1, r2, loop
 BGE  r1, r2, loop
 BNE  r1, r0, loop
-BEQ  r5, r0, fail
+BEQ  r5, r0, bigval
 SUBI r1, r1, 1
 CALL done(r0)
 RET

@@ -3,7 +3,7 @@ import re
 from enum import Enum, auto
 from collections import OrderedDict
 
-
+## static defs
 opcode_map = {
     "ALU-R":  "0000",
     "CMP-R":  "0010",
@@ -70,6 +70,7 @@ branch_function_map = {
     "BGTZ":  "1111",
 }
 
+## global type
 class InstrType(Enum):
     ALU_R = auto()
     ALU_I = auto()
@@ -87,7 +88,10 @@ class InstrType(Enum):
     EMPTY = auto()
     UNKNOWN = auto()
 
+## global label
 label_table = {}
+
+## file ops
 def read_file_lines(filepath: str) -> list:
     with open(filepath, "r", encoding="utf-8") as f:
         return f.readlines()
@@ -97,9 +101,7 @@ def write_file_lines(filepath: str, lines: list) -> None:
         f.writelines(lines)
 
 
-
-
-
+## single line parse passes
 def parseint(intstr: str) -> int:
     if intstr.lower().startswith("0x"):
         return int(intstr, 16)
@@ -184,7 +186,7 @@ def expand(oprtr: str, operands: str) -> list[str]:
         return [f"JAL R9,{imm}({rs1})"]
 
 
-
+## classifier
 def classify(line: str) -> InstrType:
     line = line.strip()
     if not line:
@@ -221,6 +223,7 @@ def classify(line: str) -> InstrType:
     if op in {"br", "not", "ble", "bge", "call", "ret", "jmp"}:
         return InstrType.PSEUDO
     return InstrType.UNKNOWN
+
 def get_opcode_and_func(instr_type: InstrType, op: str) -> tuple[str, str | None]:
     op = op.upper()
 
@@ -245,6 +248,7 @@ def get_opcode_and_func(instr_type: InstrType, op: str) -> tuple[str, str | None
             raise ValueError(f"No opcode mapping for {instr_type} / {op}")
 
 
+## single line manipulators
 def getmem(line: str) -> str:
     instr_type = classify(line)
     op = line.split(' ')[0]
@@ -354,7 +358,6 @@ def replaceLabel(line: str) -> str:
 
     return line
 
-
 def genmifLine(maddr: int, bitstr: list[str]) -> str:
     binstring = "".join(bitstr)
     print(binstring)
@@ -362,7 +365,10 @@ def genmifLine(maddr: int, bitstr: list[str]) -> str:
     maddrhex = f"{maddr:04X}"
     return maddrhex + ": " + hex + ";"
 
-## iterators
+
+
+
+## iterators (call single lines in a loop generally)
 def pseudo_map(lines: list) -> list:
     i = 0
     while i < len(lines):
@@ -443,6 +449,8 @@ def makemif(lines: OrderedDict, depth: int, width: int) -> list: ## keep the rad
     retl.append("END;")
     return retl
     
+
+## main
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python script.py <input_file> <output_file>")
