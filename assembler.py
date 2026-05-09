@@ -2,8 +2,7 @@ import sys
 import re
 from enum import Enum, auto
 from collections import OrderedDict
-# General opcode mapping
-# Bits [3:2] = MSB, Bits [1:0] = LSB
+
 
 opcode_map = {
     "ALU-R":  "0000",
@@ -88,25 +87,20 @@ class InstrType(Enum):
     EMPTY = auto()
     UNKNOWN = auto()
 
-pseudo_instructions = {
-    "BR":   {"fmt": "imm",         "itext": ["BEQ R6,R6,imm"]},
-    "NOT":  {"fmt": "RD,RS",       "itext": ["NAND RD,RS,RS"]},
-    "BLE":  {"fmt": "RS1,RS2,imm", "itext": ["LTE R6,RS1,RS2","BNEZ R6,imm"]},
-    "BGE":  {"fmt": "RS1,RS2,imm", "itext": ["GTE R6,RS1,RS2","BNEZ R6,imm"]},
-    "CALL": {"fmt": "imm(RS1)",    "itext": ["JAL RA,imm(RS1)"]},
-    "RET":  {"fmt": "",            "itext": ["JAL R9,0(RA)"]},
-    "JMP":  {"fmt": "imm(RS1)",    "itext": ["JAL R9,imm(RS1)"]},
-}
 label_table = {}
-def read_file_lines(filepath):
+def read_file_lines(filepath: str) -> list:
     with open(filepath, "r", encoding="utf-8") as f:
         return f.readlines()
 
-def write_file_lines(filepath, lines):
+def write_file_lines(filepath: str, lines: list) -> None:
     with open(filepath, "w", encoding="utf-8") as f:
         f.writelines(lines)
 
-def parseint(intstr):
+
+
+
+
+def parseint(intstr: str) -> int:
     if intstr.lower().startswith("0x"):
         return int(intstr, 16)
     else:
@@ -118,48 +112,8 @@ def parseOrig(line):
 
     return parseint(value)
 
-def parseLabel(line):
+def parseLabel(line: str)-> str:
     return line.strip().split(':')[0]
-
-def build_line_pc_map(lines):
-    pc = 0
-    line_to_pc = OrderedDict()
-
-    for line in lines:
-        line = line.strip()
-        instr_type = classify(line)
-        if(instr_type == InstrType.UNKNOWN):
-            continue
-
-
-        if instr_type == InstrType.LABEL:
-            lname = parseLabel(line)
-            label_table[lname] = pc
-            continue
-
-        if instr_type == InstrType.ORIG:
-            pc = parseOrig(line);
-            continue
-
-        if instr_type == InstrType.NAME:
-            continue
-
-
-        if instr_type in {
-            InstrType.ALU_R,
-            InstrType.ALU_I,
-            InstrType.CMP_R,
-            InstrType.CMP_I,
-            InstrType.LOAD,
-            InstrType.STORE,
-            InstrType.BRANCH,
-            InstrType.JAL,
-            InstrType.WORD,
-        }:
-            line_to_pc[pc] = line
-            pc += 4
-
-    return line_to_pc
 
 def parse(line: str) -> tuple[str, str]:
     parts    = line.split(None, 1)
@@ -167,6 +121,37 @@ def parse(line: str) -> tuple[str, str]:
     print(oprtr)
     operands = parts[1].strip().replace(' ', '') if len(parts) > 1 else ""
     return oprtr, operands
+
+def parse_reg(reg: str) -> str:
+    named = {
+        "RA": 15,
+        "SP": 14,
+        "FP": 13,
+        "GP": 12,
+        "RV": 3,
+    }
+    reg = reg.upper()
+    if reg in named:
+        return f"{named[reg]:04b}"
+    return f"{int(''.join(c for c in reg if c.isdigit())):04b}"
+def parse_imm(imm: str) -> str:
+    return f"{int(imm) & 0xFFFF:016b}"
+def parse_imm_reg(operand: str) -> tuple[str, str]:
+    imm, reg = operand[:-1].split("(")
+    return parse_imm(imm), parse_reg(reg)
+def parseName(line):
+    if(classify(line) == InstrType.NAME):
+        parts = line.strip().split(None, 1)
+        name, value = parts[1].split("=")
+        name = name.strip()
+        value = parseint(value.strip())
+        label_table[name] = value
+def parseNames(lines):
+    for x in lines:
+        parseName(x)
+
+
+
 
 def expand(oprtr: str, operands: str) -> list[str]:
 
@@ -198,19 +183,6 @@ def expand(oprtr: str, operands: str) -> list[str]:
         imm, rs1 = m.group(1), m.group(2)
         return [f"JAL R9,{imm}({rs1})"]
 
-def pseudo_map(lines):
-    i = 0
-    while i < len(lines):
-        lines[i]   = lines[i].strip()
-        if classify(lines[i]) == InstrType.PSEUDO:
-            oprtr, operands = parse(lines[i])
-            lines[i:i+1] = expand(oprtr, operands)
-            print(lines[i:i+1])
-            i += len(expand(oprtr, operands))
-        else:
-            i += 1
-
-    return lines
 
 
 def classify(line: str) -> InstrType:
@@ -271,46 +243,9 @@ def get_opcode_and_func(instr_type: InstrType, op: str) -> tuple[str, str | None
             return opcode_map["JAL"], '0000'
         case _:
             raise ValueError(f"No opcode mapping for {instr_type} / {op}")
-        
 
 
-def parseName(line):
-    if(classify(line) == InstrType.NAME):
-        parts = line.strip().split(None, 1)
-        name, value = parts[1].split("=")
-        name = name.strip()
-        value = parseint(value.strip())
-        label_table[name] = value
-def parseNames(lines):
-    for x in lines:
-        parseName(x)
-
-
-def stripAndReplaceLabels(line_to_pc: OrderedDict) -> OrderedDict:
-    result = OrderedDict()
-    for pc, line in line_to_pc.items():
-        if classify(line) not in (InstrType.LABEL, InstrType.NAME, InstrType.ORIG):
-            result[pc] = replaceLabel(line)
-    return result
-
-def parse_reg(reg: str) -> str:
-    named = {
-        "RA": 15,
-        "SP": 14,
-        "FP": 13,
-        "GP": 12,
-        "RV": 3,
-    }
-    reg = reg.upper()
-    if reg in named:
-        return f"{named[reg]:04b}"
-    return f"{int(''.join(c for c in reg if c.isdigit())):04b}"
-def parse_imm(imm: str) -> str:
-    return f"{int(imm) & 0xFFFF:016b}"
-def parse_imm_reg(operand: str) -> tuple[str, str]:
-    imm, reg = operand[:-1].split("(")
-    return parse_imm(imm), parse_reg(reg)
-def getmem(line):
+def getmem(line: str) -> str:
     instr_type = classify(line)
     op = line.split(' ')[0]
     print(op)
@@ -369,14 +304,7 @@ def getmem(line):
         case _:
             raise ValueError("no map")
 
-def linetomems(lines_dict):
-    for x in lines_dict.keys():
-        if(classify(lines_dict[x]) != InstrType.WORD):
-            lines_dict[x] = [lines_dict[x]] + [getmem(lines_dict[x])]
-        else:
-            lines_dict[x] = [lines_dict[x]] + [lines_dict[x].split(' ')[1]]
-    return lines_dict
-def replaceLabel(line: str) -> str: ## should work, temp
+def replaceLabel(line: str) -> str:
     oprtr, operands = parse(line)  
     operands = operands 
     line = f"{oprtr} {operands}" 
@@ -397,12 +325,16 @@ def replaceLabel(line: str) -> str: ## should work, temp
         m = re.match(r'^([A-Za-z_]\w*)\((\w+)\)$', imm_rs)
         if m and m.group(1) in label_table:
             ops[-1] = f"{label_table[m.group(1)]}({m.group(2)})"
+        else:
+            print("bad label")
         return f"{oprtr} {','.join(ops)}"
 
     if instr_type in (InstrType.ALU_I, InstrType.CMP_I):
         label = ops[-1]
         if label in label_table:
             ops[-1] = str(label_table[label])
+        else:
+            print("bad label")
         return f"{oprtr} {','.join(ops)}"
 
     if instr_type in (InstrType.LOAD, InstrType.STORE):
@@ -410,15 +342,106 @@ def replaceLabel(line: str) -> str: ## should work, temp
         m = re.match(r'^([A-Za-z_]\w*)\((\w+)\)$', imm_rs)
         if m and m.group(1) in label_table:
             ops[-1] = f"{label_table[m.group(1)]}({m.group(2)})"
+        else:
+            print("bad label")
         return f"{oprtr} {','.join(ops)}"
 
     if instr_type == InstrType.WORD:
         val = operands.strip()
         if val in label_table:
-            return f".WORD {label_table[val]}"
+            return f".WORD {int(label_table[val], 16)}"
         return line
 
     return line
+
+
+def genmifLine(maddr: int, bitstr: list[str]) -> str:
+    binstring = "".join(bitstr)
+    print(binstring)
+    hex = f"{int(binstring, 2):X}"
+    maddrhex = f"{maddr:04X}"
+    return maddrhex + ": " + hex + ";"
+
+## iterators
+def pseudo_map(lines: list) -> list:
+    i = 0
+    while i < len(lines):
+        lines[i]   = lines[i].strip()
+        if classify(lines[i]) == InstrType.PSEUDO:
+            oprtr, operands = parse(lines[i])
+            lines[i:i+1] = expand(oprtr, operands)
+            print(lines[i:i+1])
+            i += len(expand(oprtr, operands))
+        else:
+            i += 1
+
+    return lines
+
+def stripAndReplaceLabels(line_to_pc: OrderedDict) -> OrderedDict:
+    result = OrderedDict()
+    for pc, line in line_to_pc.items():
+        if classify(line) not in (InstrType.LABEL, InstrType.NAME, InstrType.ORIG):
+            result[pc] = replaceLabel(line)
+    return result
+
+def linetomems(lines_dict: OrderedDict) -> OrderedDict:
+    for x in lines_dict.keys():
+        if(classify(lines_dict[x]) != InstrType.WORD):
+            lines_dict[x] = [lines_dict[x]] + [getmem(lines_dict[x])]
+        else:
+            lines_dict[x] = [lines_dict[x]] + [f"{int(lines_dict[x].split(' ')[1], 16):032b}"]
+    return lines_dict
+def build_line_mem_map(lines: list) -> list: ## fix. it's word addressesd
+    pc = 0
+    line_to_pc = OrderedDict()
+
+    for line in lines:
+        line = line.strip()
+        instr_type = classify(line)
+        if(instr_type == InstrType.UNKNOWN):
+            continue
+
+        if instr_type == InstrType.LABEL:
+            lname = parseLabel(line)
+            label_table[lname] = pc
+            continue
+
+        if instr_type == InstrType.ORIG:
+            pc = parseOrig(line);
+            continue
+
+        if instr_type == InstrType.NAME:
+            continue
+
+
+        if instr_type in {
+            InstrType.ALU_R,
+            InstrType.ALU_I,
+            InstrType.CMP_R,
+            InstrType.CMP_I,
+            InstrType.LOAD,
+            InstrType.STORE,
+            InstrType.BRANCH,
+            InstrType.JAL,
+            InstrType.WORD,
+        }:
+            line_to_pc[pc] = line
+            pc += 1
+
+    return line_to_pc
+
+
+def makemif(lines: OrderedDict, depth: int, width: int) -> list: ## keep the radix the same, no headaches
+    retl = []
+    retl.append("DEPTH = " + str(depth))
+    retl.append("WIDTH = " + str(width))
+    retl.append("ADDRESS_RADIX = " + "HEX")
+    retl.append("DATA_RADIX = " + "HEX")
+    retl.append("CONTENT\nBEGIN")
+    for k in lines:
+        retl.append(genmifLine(k, lines[k][1]))
+    retl.append("END;")
+    return retl
     
 if __name__ == "__main__":
     if len(sys.argv) != 3:
@@ -433,11 +456,14 @@ if __name__ == "__main__":
 
     parseNames(lines)
     print(lines)
-    linesDict = build_line_pc_map(lines)
+    linesDict = build_line_mem_map(lines)
     print(label_table)
     linesDict = stripAndReplaceLabels(linesDict)
 
     linesDict = linetomems(linesDict)
     print(linesDict)
     lines = [x[0]+"\n" for x in linesDict.values() ]
+    outlist = makemif(linesDict, 2048, 32)
+    print(outlist)
+    lines = [x +"\n" for x in outlist ]
     write_file_lines(output_file, lines)
