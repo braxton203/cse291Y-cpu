@@ -31,10 +31,10 @@ alu_function_map = {
     "NANDI": "1100",
     "NOR":   "1101",
     "NORI":  "1101",
-    "NXOR":  "1110",
-    "NXORI": "1110",
+    "XNOR":  "1110",
+    "XNORI": "1110",
+    "MVHI":  "1011",
 }
-
 cmp_function_map = {
     "F":     "0000",
     "FI":    "0000",
@@ -163,33 +163,50 @@ def build_line_pc_map(lines):
 
 def parse(line: str) -> tuple[str, str]:
     parts    = line.split(None, 1)
-    mnemonic = parts[0].upper()
-    operands = parts[1].strip() if len(parts) > 1 else ""
-    return mnemonic, operands
+    oprtr = parts[0].upper()
+    print(oprtr)
+    operands = parts[1].strip().replace(' ', '') if len(parts) > 1 else ""
+    return oprtr, operands
 
-def expand(mnemonic: str, operands: str) -> list[str]:
-    entry      = pseudo_instructions[mnemonic]
-    fmt_tokens = [t.strip() for t in entry["fmt"].split(",")] if entry["fmt"] else []
-    op_tokens  = [t.strip() for t in operands.split(",")] if operands else []
-    bindings   = dict(zip(fmt_tokens, op_tokens))
+def expand(oprtr: str, operands: str) -> list[str]:
 
-    def apply(template: str) -> str:
-        for k, v in bindings.items():
-            template = template.replace(k, v)
-        return template
+    if oprtr == "BR":
+        return [f"BEQ R6,R6,{operands}"]
 
-    return [apply(t) for t in entry["itext"]]
+    if oprtr == "NOT":
+        rd, rs = operands.split(",")
+        return [f"NAND {rd},{rs},{rs}"]
+
+    if oprtr == "BLE":
+        rs1, rs2, imm = operands.split(",")
+        return [f"LTE R6,{rs1},{rs2}", f"BNEZ R6,{imm}"]
+
+    if oprtr == "BGE":
+        rs1, rs2, imm = operands.split(",")
+        return [f"GTE R6,{rs1},{rs2}", f"BNEZ R6,{imm}"]
+
+    if oprtr == "CALL":
+        m = re.match(r'(.+)\((.+)\)', operands)
+        imm, rs1 = m.group(1), m.group(2)
+        return [f"JAL RA,{imm}({rs1})"]
+
+    if oprtr == "RET":
+        return ["JAL R9,0(RA)"]
+
+    if oprtr == "JMP":
+        m = re.match(r'(.+)\((.+)\)', operands)
+        imm, rs1 = m.group(1), m.group(2)
+        return [f"JAL R9,{imm}({rs1})"]
 
 def pseudo_map(lines):
     i = 0
     while i < len(lines):
         lines[i]   = lines[i].strip()
-
         if classify(lines[i]) == InstrType.PSEUDO:
-            mnemonic, operands = parse(lines[i])
-            print(mnemonic)
-            lines[i:i+1] = expand(mnemonic, operands)
-            i += len(expand(mnemonic, operands))
+            oprtr, operands = parse(lines[i])
+            lines[i:i+1] = expand(oprtr, operands)
+            print(lines[i:i+1])
+            i += len(expand(oprtr, operands))
         else:
             i += 1
 
@@ -198,52 +215,39 @@ def pseudo_map(lines):
 
 def classify(line: str) -> InstrType:
     line = line.strip()
-
     if not line:
         return InstrType.EMPTY
-
     if re.match(r'^[A-Za-z_]\w*:$', line):
         return InstrType.LABEL
-
     if re.match(r'^\.(orig)\b', line, re.I):
         return InstrType.ORIG
-
     if re.match(r'^\.(word)\b', line, re.I):
         return InstrType.WORD
-
     if re.match(r'^\.(name)\b', line, re.I):
         return InstrType.NAME
-
     op_match = re.match(r'^\s*([A-Za-z]+)', line)
-    print(op_match)
     if not op_match:
         return InstrType.UNKNOWN
-
     op = op_match.group(1).lower()
-    print(op)
-    if op in {"add", "sub", "and", "or", "xor", "nand", "nor", "nxor"}:
+    if op in {"add", "sub", "and", "or", "xor", "nand", "nor", "xnor"}:
         return InstrType.ALU_R
-
-    if op in {"addi", "subi", "andi", "ori", "xori"}:
+    if op in {"addi", "subi", "andi", "ori", "xori", "nandi", "nori", "xnori", "mvhi"}:
         return InstrType.ALU_I
-
-    if op in {"eq", "lt", "lte", "gt", "gte", "ne"}:
+    if op in {"f", "eq", "lt", "lte", "t", "ne", "gte", "gt"}:
         return InstrType.CMP_R
-
+    if op in {"fi", "eqi", "lti", "ltei", "ti", "nei", "gtei", "gti"}:
+        return InstrType.CMP_I
     if op in {"lw"}:
         return InstrType.LOAD
-
     if op in {"sw"}:
         return InstrType.STORE
-
-    if op in {"beq", "blt", "bne", "bgt", "bf", "bt"}:
+    if op in {"bf", "beq", "blt", "blte", "beqz", "bltz", "bltez",
+              "bt", "bne", "bgte", "bgt", "bnez", "bgtez", "bgtz"}:
         return InstrType.BRANCH
-
     if op in {"jal"}:
         return InstrType.JAL
-    if op in {"br", "not", "ble", "bge", "call", "ret", "jump"}:
+    if op in {"br", "not", "ble", "bge", "call", "ret", "jmp"}:
         return InstrType.PSEUDO
-
     return InstrType.UNKNOWN
 def get_opcode_and_func(instr_type: InstrType, op: str) -> tuple[str, str | None]:
     op = op.upper()
@@ -258,13 +262,13 @@ def get_opcode_and_func(instr_type: InstrType, op: str) -> tuple[str, str | None
         case InstrType.CMP_I:
             return opcode_map["CMP-I"], cmp_function_map[op]
         case InstrType.LOAD:
-            return opcode_map["LW"], None
+            return opcode_map["LW"], '0000'
         case InstrType.STORE:
-            return opcode_map["SW"], None
+            return opcode_map["SW"], '0000'
         case InstrType.BRANCH:
             return opcode_map["BRANCH"], branch_function_map[op]
         case InstrType.JAL:
-            return opcode_map["JAL"], None
+            return opcode_map["JAL"], '0000'
         case _:
             raise ValueError(f"No opcode mapping for {instr_type} / {op}")
         
@@ -276,7 +280,7 @@ def parseName(line):
         name, value = parts[1].split("=")
         name = name.strip()
         value = parseint(value.strip())
-        label_table[value] = name
+        label_table[name] = value
 def parseNames(lines):
     for x in lines:
         parseName(x)
@@ -289,36 +293,124 @@ def stripAndReplaceLabels(line_to_pc: OrderedDict) -> OrderedDict:
             result[pc] = replaceLabel(line)
     return result
 
-def replaceLabel(line: str) -> str: ## should work, temp
+def parse_reg(reg: str) -> str:
+    named = {
+        "RA": 15,
+        "SP": 14,
+        "FP": 13,
+        "GP": 12,
+        "RV": 3,
+    }
+    reg = reg.upper()
+    if reg in named:
+        return f"{named[reg]:04b}"
+    return f"{int(''.join(c for c in reg if c.isdigit())):04b}"
+def parse_imm(imm: str) -> str:
+    return f"{int(imm) & 0xFFFF:016b}"
+def parse_imm_reg(operand: str) -> tuple[str, str]:
+    imm, reg = operand[:-1].split("(")
+    return parse_imm(imm), parse_reg(reg)
+def getmem(line):
     instr_type = classify(line)
-    mnemonic, operands = parse(line)
+    op = line.split(' ')[0]
+    print(op)
+    opc, function = get_opcode_and_func(instr_type, op)
+    operands = parse(line)[1].split(",")
+    print(operands)
+    match instr_type:
+        case InstrType.ALU_R:
+            opn1 = parse_reg(operands[0])
+            opn2 = parse_reg(operands[1])
+            opn3 = parse_reg(operands[2])
+            return opn1, opn2, opn3, '0000' * 3,  function, opc
+        case InstrType.ALU_I:
+            if(op.upper() == 'MVHI'):
+               opn1 = parse_reg(operands[0])
+               opn2 = '0000'
+            else:
+                opn1 = parse_reg(operands[0])
+                opn2 = parse_reg(operands[1])
+            imm = parse_imm(operands[2])
+            return opn1, opn2, imm, function, opc
+        case InstrType.CMP_R:
+            opn1 = parse_reg(operands[0])
+            opn2 = parse_reg(operands[1])
+            opn3 = parse_reg(operands[2])
+            return opn1, opn2, opn3, '0000' * 3,  function, opc
+        case InstrType.CMP_I:
+
+            opn1 = parse_reg(operands[0])
+            opn2 = parse_reg(operands[1])
+            imm = parse_imm(operands[2])
+            return opn1, opn2, imm,  function , opc
+        case InstrType.LOAD:
+            opn1 = parse_reg(operands[0])
+            opn3, opn2 = parse_imm_reg(operands[1])
+            return opn1, opn2, opn3, function,  opc
+        case InstrType.STORE:
+            opn1 = parse_reg(operands[0])
+            opn3, opn2 = parse_imm_reg(operands[1])
+            return opn1, opn2, opn3, function,  opc
+        case InstrType.BRANCH:
+            if(op.upper() in ["BF", "BEQ", "BLT", "BLTE", "BT", "BNE", "BGTE", "BGT"]):
+                opn1 = parse_reg(operands[0])
+                opn2 = parse_reg(operands[1])
+                imm = parse_imm(operands[2])
+            else:
+                opn1 = parse_reg(operands[0])
+                opn2 = '0000'
+                imm = parse_imm(operands[1])
+            return opn1, opn2, imm, function, opc
+        case InstrType.JAL:
+            print(operands)
+            opn1 = parse_reg(operands[0])
+            opn3, opn2 = parse_imm_reg(operands[1])
+            return opn1, opn2, opn3, function, opc
+        case _:
+            raise ValueError("no map")
+
+def linetomems(lines_dict):
+    for x in lines_dict.keys():
+        if(classify(lines_dict[x]) != InstrType.WORD):
+            lines_dict[x] = [lines_dict[x]] + [getmem(lines_dict[x])]
+        else:
+            lines_dict[x] = [lines_dict[x]] + [lines_dict[x].split(' ')[1]]
+    return lines_dict
+def replaceLabel(line: str) -> str: ## should work, temp
+    oprtr, operands = parse(line)  
+    operands = operands 
+    line = f"{oprtr} {operands}" 
+    instr_type = classify(line)
     ops = [o.strip() for o in operands.split(",")]
 
     if instr_type == InstrType.BRANCH:
         label = ops[-1]
+        print(line)
         if label in label_table:
             ops[-1] = str(label_table[label])
-        return f"{mnemonic} {','.join(ops)}"
+        else:
+            print("bad label")
+        return f"{oprtr} {','.join(ops)}"
 
     if instr_type == InstrType.JAL:
         imm_rs = ops[-1]
         m = re.match(r'^([A-Za-z_]\w*)\((\w+)\)$', imm_rs)
         if m and m.group(1) in label_table:
             ops[-1] = f"{label_table[m.group(1)]}({m.group(2)})"
-        return f"{mnemonic} {','.join(ops)}"
+        return f"{oprtr} {','.join(ops)}"
 
     if instr_type in (InstrType.ALU_I, InstrType.CMP_I):
         label = ops[-1]
         if label in label_table:
-            ops[-1] = str(label_table[label] & 0xFFFF)
-        return f"{mnemonic} {','.join(ops)}"
+            ops[-1] = str(label_table[label])
+        return f"{oprtr} {','.join(ops)}"
 
     if instr_type in (InstrType.LOAD, InstrType.STORE):
         imm_rs = ops[-1]
         m = re.match(r'^([A-Za-z_]\w*)\((\w+)\)$', imm_rs)
         if m and m.group(1) in label_table:
-            ops[-1] = f"{label_table[m.group(1)] & 0xFFFF}({m.group(2)})"
-        return f"{mnemonic} {','.join(ops)}"
+            ops[-1] = f"{label_table[m.group(1)]}({m.group(2)})"
+        return f"{oprtr} {','.join(ops)}"
 
     if instr_type == InstrType.WORD:
         val = operands.strip()
@@ -340,11 +432,12 @@ if __name__ == "__main__":
     lines = pseudo_map(lines)
 
     parseNames(lines)
-
+    print(lines)
     linesDict = build_line_pc_map(lines)
-    lines = stripAndReplaceLabels(linesDict)
     print(label_table)
-    
+    linesDict = stripAndReplaceLabels(linesDict)
 
-    lines = [x+"\n" for x in lines.values() ]
+    linesDict = linetomems(linesDict)
+    print(linesDict)
+    lines = [x[0]+"\n" for x in linesDict.values() ]
     write_file_lines(output_file, lines)
