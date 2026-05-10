@@ -18,7 +18,7 @@ assign LEDR = ledr_reg;
 //Current instruction
 wire [31:0] instr;
 //word-aligned instruction fetch
-assign instr = imem[pc[9:2]];
+assign instr = imem[pc];
 
 // Decode fields
 wire [3:0] opcode;
@@ -114,6 +114,34 @@ branch branch0(
     .taken(branch_taken)
 );
 
+task load_mif;
+    input [1023:0] filename;
+
+    integer file;
+    integer code;
+    integer addr;
+    integer data;
+    reg [1023:0] line;
+
+    begin
+        file = $fopen(filename, "r");
+
+        if (file == 0) begin
+            $display("ERROR: could not open %s", filename);
+        end else begin
+            while (!$feof(file)) begin
+                code = $fgets(line, file);
+
+                if ($sscanf(line, "%h: %h;", addr, data) == 2) begin
+                    imem[addr] = data;
+                end
+            end
+
+            $fclose(file);
+        end
+    end
+endtask
+
 //Initialize memory
 initial begin
     for (j = 0; j < 256; j = j + 1) begin
@@ -124,7 +152,8 @@ initial begin
     ledr_reg = 10'b0;
 
     //Load assembler output here
-    //$readmemh("program.mem", imem);
+    //$readmemh("program.mif", imem);
+    load_mif("program.mif");
 end
 
 //Combinational control logic
@@ -164,7 +193,7 @@ always @(*) begin
             write_data = cmp_result;
         end
 
-        4'h4: begin
+        4'h9: begin
             //LW
             write_enable = 1;
 
