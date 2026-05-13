@@ -18,7 +18,7 @@ assign LEDR = ledr_reg;
 //Current instruction
 wire [31:0] instr;
 //word-aligned instruction fetch
-assign instr = imem[pc];
+assign instr = imem[pc[9:2]];
 
 // Decode fields
 wire [3:0] opcode;
