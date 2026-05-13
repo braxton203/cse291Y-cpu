@@ -4,7 +4,7 @@ from enum import Enum, auto
 from collections import OrderedDict
 
 ## static defs
-opcode_map = {
+opcode_map = { ## opcodes to 
     "ALU-R":  "0000",
     "CMP-R":  "0010",
     "SW":     "0101",
@@ -15,6 +15,7 @@ opcode_map = {
     "JAL":    "1011",
 }
 
+## map funcs to codes
 alu_function_map = {
     "ADD":   "0000",
     "ADDI":  "0000",
@@ -88,7 +89,7 @@ class InstrType(Enum):
     EMPTY = auto()
     UNKNOWN = auto()
 
-## global label
+## global label of word to label
 label_table = {}
 
 ## file ops
@@ -103,59 +104,56 @@ def write_file_lines(filepath: str, lines: list) -> None:
 
 ## single line parse passes
 def parseint(intstr: str) -> int:
-    if intstr.lower().startswith("0x"):
+    if intstr.lower().startswith("0x"): ## parse hex int
         return int(intstr, 16)
     else:
-        return int(intstr)
-def parseOrig(line):
+        return int(intstr) ## parse normal int
+def parseOrig(line): ## take orig, parse the int, split by space
     parts = line.strip().split()
 
     value = parts[1]
 
     return parseint(value)
 
-def parseLabel(line: str)-> str:
+def parseLabel(line: str)-> str: ## parse label by colon
     return line.strip().split(':')[0]
 
-def parse(line: str) -> tuple[str, str]:
+def parse(line: str) -> tuple[str, str]: ## break line into operator and list of operands
     parts    = line.split(None, 1)
     oprtr = parts[0].upper()
     print(oprtr)
     operands = parts[1].strip().replace(' ', '') if len(parts) > 1 else ""
     return oprtr, operands
 
-def parse_reg(reg: str) -> str:
-    named = {
+def parse_reg(reg: str) -> str: ## parse registers
+    named = { ## handle special names
         "RA": 15,
         "SP": 14,
         "FP": 13,
         "GP": 12,
         "RV": 3,
     }
-    reg = reg.upper()
+    reg = reg.upper() 
     if reg in named:
         return f"{named[reg]:04b}"
-    return f"{int(''.join(c for c in reg if c.isdigit())):04b}"
-def parse_imm(imm: str) -> str:
-    return f"{int(imm) & 0xFFFF:016b}"
-def parse_imm_reg(operand: str) -> tuple[str, str]:
+    return f"{int(''.join(c for c in reg if c.isdigit())):04b}" ## strip leading chars, return as bit repr of int
+def parse_imm(imm: str) -> str: ## parse immediate fields
+    return f"{int(imm) & 0xFFFF:016b}" ## hex to decimal integer
+def parse_imm_reg(operand: str) -> tuple[str, str]: ## take imm(reg) and return both parsed
     imm, reg = operand[:-1].split("(")
     return parse_imm(imm), parse_reg(reg)
-def parseName(line):
+def parseName(line):## parse .NAME. split based on whitespace
     if(classify(line) == InstrType.NAME):
         parts = line.strip().split(None, 1)
         name, value = parts[1].split("=")
         name = name.strip()
-        value = parseint(value.strip())
-        label_table[name] = value
-def parseNames(lines):
-    for x in lines:
-        parseName(x)
+        value = parseint(value.strip()) 
+        label_table[name] = value ## write label value to table
 
 
 
 
-def expand(oprtr: str, operands: str) -> list[str]:
+def expand(oprtr: str, operands: str) -> list[str]: ## take operator and operands, and match agains pseudo instrs, and return the "real" instrs
 
     if oprtr == "BR":
         return [f"BEQ R6,R6,{operands}"]
@@ -173,7 +171,7 @@ def expand(oprtr: str, operands: str) -> list[str]:
         return [f"GTE R6,{rs1},{rs2}", f"BNEZ R6,{imm}"]
 
     if oprtr == "CALL":
-        m = re.match(r'(.+)\((.+)\)', operands)
+        m = re.match(r'(.+)\((.+)\)', operands) ## match to before parens, and inside parens
         imm, rs1 = m.group(1), m.group(2)
         return [f"JAL RA,{imm}({rs1})"]
 
@@ -181,13 +179,13 @@ def expand(oprtr: str, operands: str) -> list[str]:
         return ["JAL R9,0(RA)"]
 
     if oprtr == "JMP":
-        m = re.match(r'(.+)\((.+)\)', operands)
+        m = re.match(r'(.+)\((.+)\)', operands) ## match to before parens, and inside parens
         imm, rs1 = m.group(1), m.group(2)
         return [f"JAL R9,{imm}({rs1})"]
 
 
 ## classifier
-def classify(line: str) -> InstrType:
+def classify(line: str) -> InstrType: ## check type of instr by opname
     line = line.strip()
     if not line:
         return InstrType.EMPTY
@@ -220,11 +218,11 @@ def classify(line: str) -> InstrType:
         return InstrType.BRANCH
     if op in {"jal"}:
         return InstrType.JAL
-    if op in {"br", "not", "ble", "bge", "call", "ret", "jmp"}:
+    if op in {"br", "not", "ble", "bge", "call", "ret", "jmp"}: ## pseudos separate
         return InstrType.PSEUDO
     return InstrType.UNKNOWN
 
-def get_opcode_and_func(instr_type: InstrType, op: str) -> tuple[str, str | None]:
+def get_opcode_and_func(instr_type: InstrType, op: str) -> tuple[str, str | None]: ## check opcode map, and indivudal maps
     op = op.upper()
 
     match instr_type:
@@ -249,7 +247,7 @@ def get_opcode_and_func(instr_type: InstrType, op: str) -> tuple[str, str | None
 
 
 ## single line manipulators
-def getmem(line: str) -> str:
+def getmem(line: str) -> str: ## turn an instr (not pseudo) into mem string
     instr_type = classify(line)
     op = line.split(' ')[0]
     print(op)
@@ -308,13 +306,14 @@ def getmem(line: str) -> str:
         case _:
             raise ValueError("no map")
 
-def replaceLabel(line: str) -> str:
+def replaceLabel(line: str) -> str: ## replace all labels in code
     oprtr, operands = parse(line)  
-    operands = operands 
-    line = f"{oprtr} {operands}" 
+    line = f"{oprtr} {operands}" ## fix weird whitespace stuff and just reconstruct
     instr_type = classify(line)
-    ops = [o.strip() for o in operands.split(",")]
+    ops = [o.strip() for o in operands.split(",")] ## ops list
 
+
+    ## just match each op to which ahs the label
     if instr_type == InstrType.BRANCH:
         label = ops[-1]
         print(line)
@@ -326,9 +325,9 @@ def replaceLabel(line: str) -> str:
 
     if instr_type == InstrType.JAL:
         imm_rs = ops[-1]
-        m = re.match(r'^([A-Za-z_]\w*)\((\w+)\)$', imm_rs)
+        m = re.match(r'^([A-Za-z_]\w*)\((\w+)\)$', imm_rs) ## regex for label(reg), match the label
         if m and m.group(1) in label_table:
-            ops[-1] = f"{label_table[m.group(1)]}({m.group(2)})"
+            ops[-1] = f"{label_table[m.group(1)]}({m.group(2)})" ## match the label table
         else:
             print("bad label")
         return f"{oprtr} {','.join(ops)}"
@@ -351,14 +350,14 @@ def replaceLabel(line: str) -> str:
         return f"{oprtr} {','.join(ops)}"
 
     if instr_type == InstrType.WORD:
-        val = operands.strip()
+        val = operands.strip() ## just the raw op
         if val in label_table:
             return f".WORD {int(label_table[val], 16)}"
         return line
 
     return line
 
-def genmifLine(maddr: int, bitstr: list[str]) -> str:
+def genmifLine(maddr: int, bitstr: list[str]) -> str: ## turn the binstring into mif hex
     binstring = "".join(bitstr)
     print(binstring)
     hex = f"{int(binstring, 2):X}"
@@ -369,7 +368,7 @@ def genmifLine(maddr: int, bitstr: list[str]) -> str:
 
 
 ## iterators (call single lines in a loop generally)
-def pseudo_map(lines: list) -> list:
+def pseudo_map(lines: list) -> list: ## for each line, if it's pseudo, parse it, then expand it
     i = 0
     while i < len(lines):
         lines[i]   = lines[i].strip()
@@ -382,22 +381,25 @@ def pseudo_map(lines: list) -> list:
             i += 1
 
     return lines
+def parseNames(lines): ## call parse name on all lines
+    for x in lines:
+        parseName(x)
 
-def stripAndReplaceLabels(line_to_pc: OrderedDict) -> OrderedDict:
+def stripAndReplaceLabels(line_to_pc: OrderedDict) -> OrderedDict: ## replace labels in instrus using replacelabel. take the mem dict
     result = OrderedDict()
     for pc, line in line_to_pc.items():
         if classify(line) not in (InstrType.LABEL, InstrType.NAME, InstrType.ORIG):
             result[pc] = replaceLabel(line)
     return result
 
-def linetomems(lines_dict: OrderedDict) -> OrderedDict:
+def linetomems(lines_dict: OrderedDict) -> OrderedDict: ## turn lines into hexstr for mem
     for x in lines_dict.keys():
         if(classify(lines_dict[x]) != InstrType.WORD):
             lines_dict[x] = [lines_dict[x]] + [getmem(lines_dict[x])]
         else:
             lines_dict[x] = [lines_dict[x]] + [f"{int(lines_dict[x].split(' ')[1], 16):032b}"]
     return lines_dict
-def build_line_mem_map(lines: list) -> list: ## fix. it's word addressesd
+def build_line_mem_map(lines: list) -> OrderedDict: ## fix. it's word addressesd: turn each line into it's word address (+1 unless it's a super or a pseudo)
     pc = 0
     line_to_pc = OrderedDict()
 
